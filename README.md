@@ -53,6 +53,8 @@ npm run start:dev
 
 Server berjalan di `http://localhost:3000/api/v1`
 
+Swagger docs: `http://localhost:3000/docs`
+
 ### 6. Jalankan Tests
 
 ```bash
@@ -105,6 +107,16 @@ Tenant **selalu di-resolve dari `request.user.companyId`** — tidak pernah dari
 | POST | `/api/v1/auth/register` | Register user baru | Public |
 | POST | `/api/v1/auth/login` | Login | Public |
 
+### Companies
+| Method | Endpoint | Description | Role |
+|--------|----------|-------------|------|
+| POST | `/api/v1/companies` | Buat company baru | Login |
+| GET | `/api/v1/companies` | List semua company user | `@RequireTenant` |
+| GET | `/api/v1/companies/:id` | Detail company | `@RequireTenant` |
+| PATCH | `/api/v1/companies/:id` | Update company | Owner |
+| DELETE | `/api/v1/companies/:id` | Hapus company | Owner |
+| POST | `/api/v1/companies/switch` | Ganti active company | Login |
+
 ### Projects
 | Method | Endpoint | Description | Role |
 |--------|----------|-------------|------|
@@ -142,6 +154,25 @@ Tenant **selalu di-resolve dari `request.user.companyId`** — tidak pernah dari
 
 // Error
 { "success": false, "error": { "code": "NOT_FOUND", "message": "Project not found" } }
+```
+
+### Login Response
+
+```json
+{
+  "accessToken": "eyJ...",
+  "tokenType": "Bearer",
+  "expiresIn": 900,
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "fullName": "User Name",
+    "role": "owner",
+    "companyId": "uuid",
+    "subscriptionStatus": "active",
+    "subscriptionEndsAt": "2027-12-31T00:00:00.000Z"
+  }
+}
 ```
 
 ---
