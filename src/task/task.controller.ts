@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -60,7 +61,7 @@ export class TaskController {
   async findAll(
     @Req() req: { user: AuthenticatedUser },
     @Param('projectId') projectId: string,
-    @Body() pagination: PaginationDto,
+    @Query() pagination: PaginationDto,
   ) {
     const { tasks, total, page, limit } = await this.taskService.findAll(
       req.user.companyId!,

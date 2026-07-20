@@ -107,6 +107,14 @@ Tenant **selalu di-resolve dari `request.user.companyId`** — tidak pernah dari
 | POST | `/api/v1/auth/register` | Register user baru | Public |
 | POST | `/api/v1/auth/login` | Login | Public |
 
+### Subscriptions
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/v1/subscriptions/plans` | List available plans | Login |
+| POST | `/api/v1/subscriptions/subscribe` | Subscribe to a plan | Login |
+| GET | `/api/v1/subscriptions/status` | Check subscription status | Login |
+| POST | `/api/v1/subscriptions/cancel` | Cancel subscription | Login |
+
 ### Companies
 | Method | Endpoint | Description | Role |
 |--------|----------|-------------|------|

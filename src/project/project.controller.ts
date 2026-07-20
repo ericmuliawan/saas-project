@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -54,7 +55,7 @@ export class ProjectController {
   @ApiOperation({ summary: 'List all projects in active company' })
   async findAll(
     @Req() req: { user: AuthenticatedUser },
-    @Body() pagination: PaginationDto,
+    @Query() pagination: PaginationDto,
   ) {
     const { projects, total, page, limit } = await this.projectService.findAll(
       req.user.companyId!,

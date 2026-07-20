@@ -12,6 +12,7 @@ import { TaskModule } from './task/task.module';
 import { MemberModule } from './member/member.module';
 import { NotificationModule } from './notification/notification.module';
 import { CompanyModule } from './company/company.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CompanyModule } from './company/company.module';
     TaskModule,
     MemberModule,
     CompanyModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [
