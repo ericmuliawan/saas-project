@@ -71,6 +71,20 @@ export class AuthService {
       },
     );
 
+    let role: string | null = null;
+    if (user.activeCompanyId) {
+      const membership = await this.prisma.companyMember.findUnique({
+        where: {
+          companyId_userId: {
+            companyId: user.activeCompanyId,
+            userId: user.id,
+          },
+        },
+        select: { role: true },
+      });
+      role = membership?.role ?? null;
+    }
+
     return {
       accessToken,
       tokenType: 'Bearer',
@@ -79,6 +93,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        role,
+        companyId: user.activeCompanyId,
         subscriptionStatus: user.subscriptionStatus,
         subscriptionEndsAt: user.subscriptionEndsAt,
       },

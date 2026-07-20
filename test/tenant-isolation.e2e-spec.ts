@@ -2,132 +2,108 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/app.config';
+
+const PASSWORD = 'ValidPass1234';
+const TIMEOUT = 30_000;
 
 interface AuthResponse {
   accessToken: string;
-}
-
-interface CompanyResponse {
-  data: { id: string };
-}
-
-interface ProjectResponse {
-  data: { id: string; name: string };
-}
-
-interface TaskResponse {
-  data: { id: string };
 }
 
 describe('Tenant Isolation (e2e)', () => {
   let app: INestApplication<App>;
   let userAToken: string;
   let userBToken: string;
-  let companyAId: string;
   let projectAId: string;
   let taskAId: string;
 
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  const prisma = new PrismaClient({ adapter });
+
   beforeAll(async () => {
+    await prisma.task.deleteMany();
+    await prisma.project.deleteMany();
+    await prisma.companyMember.deleteMany();
+    await prisma.company.deleteMany();
+    await prisma.appUser.deleteMany({ where: { email: { contains: 'iso-' } } });
+
+    const passwordHash = await bcrypt.hash(PASSWORD, 12);
+    const ts = Date.now();
+
+    const userA = await prisma.appUser.create({
+      data: {
+        email: `iso-a-${ts}@test.com`,
+        fullName: 'Tenant A User',
+        passwordHash,
+        subscriptionStatus: 'active',
+        subscriptionEndsAt: new Date('2027-12-31'),
+      },
+    });
+
+    const userB = await prisma.appUser.create({
+      data: {
+        email: `iso-b-${ts}@test.com`,
+        fullName: 'Tenant B User',
+        passwordHash,
+        subscriptionStatus: 'active',
+        subscriptionEndsAt: new Date('2027-12-31'),
+      },
+    });
+
+    const companyA = await prisma.company.create({
+      data: { name: 'Company A', slug: `company-a-${ts}`, ownerId: userA.id },
+    });
+
+    const companyB = await prisma.company.create({
+      data: { name: 'Company B', slug: `company-b-${ts}`, ownerId: userB.id },
+    });
+
+    await prisma.appUser.update({ where: { id: userA.id }, data: { activeCompanyId: companyA.id } });
+    await prisma.appUser.update({ where: { id: userB.id }, data: { activeCompanyId: companyB.id } });
+
+    const project = await prisma.project.create({
+      data: { companyId: companyA.id, name: 'Secret Project A', createdById: userA.id },
+    });
+    projectAId = project.id;
+
+    const task = await prisma.task.create({
+      data: { companyId: companyA.id, projectId: project.id, title: 'Secret Task A' },
+    });
+    taskAId = task.id;
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    configureApp(app);
     await app.init();
-  });
+
+    const loginARes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: userA.email, password: PASSWORD });
+    userAToken = (loginARes.body as AuthResponse).accessToken;
+
+    const loginBRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: userB.email, password: PASSWORD });
+    userBToken = (loginBRes.body as AuthResponse).accessToken;
+  }, TIMEOUT);
 
   afterAll(async () => {
     await app?.close();
-  });
-
-  it('register user A', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        fullName: 'User A Tenant Test',
-        email: `tenant-a-${Date.now()}@test.com`,
-        password: 'Password123',
-      })
-      .expect(201);
-
-    const body = res.body as AuthResponse;
-    userAToken = body.accessToken;
-    expect(userAToken).toBeDefined();
-  });
-
-  it('register user B', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        fullName: 'User B Tenant Test',
-        email: `tenant-b-${Date.now()}@test.com`,
-        password: 'Password123',
-      })
-      .expect(201);
-
-    const body = res.body as AuthResponse;
-    userBToken = body.accessToken;
-    expect(userBToken).toBeDefined();
-  });
-
-  it('user A creates company A', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        fullName: 'Owner A',
-        email: `owner-a-${Date.now()}@test.com`,
-        password: 'Password123',
-      })
-      .expect(201);
-
-    const authBody = res.body as AuthResponse;
-    userAToken = authBody.accessToken;
-
-    const createCompanyRes = await request(app.getHttpServer())
-      .post('/api/v1/companies')
-      .set('Authorization', `Bearer ${userAToken}`)
-      .send({ name: 'Company A', slug: `company-a-${Date.now()}` })
-      .expect(201);
-
-    const companyBody = createCompanyRes.body as CompanyResponse;
-    companyAId = companyBody.data.id;
-    expect(companyAId).toBeDefined();
-  });
-
-  it('user A creates project and task in company A', async () => {
-    const projectRes = await request(app.getHttpServer())
-      .post('/api/v1/projects')
-      .set('Authorization', `Bearer ${userAToken}`)
-      .send({ name: 'Project A' })
-      .expect(201);
-
-    const projectBody = projectRes.body as ProjectResponse;
-    projectAId = projectBody.data.id;
-
-    const taskRes = await request(app.getHttpServer())
-      .post(`/api/v1/projects/${projectAId}/tasks`)
-      .set('Authorization', `Bearer ${userAToken}`)
-      .send({ title: 'Task A' })
-      .expect(201);
-
-    const taskBody = taskRes.body as TaskResponse;
-    taskAId = taskBody.data.id;
-  });
+    await prisma.$disconnect();
+  }, TIMEOUT);
 
   it('user B cannot read user A project (cross-tenant)', async () => {
     const res = await request(app.getHttpServer())
       .get(`/api/v1/projects/${projectAId}`)
       .set('Authorization', `Bearer ${userBToken}`);
-
     expect([403, 404]).toContain(res.status);
   });
 
@@ -135,8 +111,7 @@ describe('Tenant Isolation (e2e)', () => {
     const res = await request(app.getHttpServer())
       .patch(`/api/v1/projects/${projectAId}`)
       .set('Authorization', `Bearer ${userBToken}`)
-      .send({ name: 'Hacked Project' });
-
+      .send({ name: 'Hacked' });
     expect([403, 404]).toContain(res.status);
   });
 
@@ -144,7 +119,6 @@ describe('Tenant Isolation (e2e)', () => {
     const res = await request(app.getHttpServer())
       .get(`/api/v1/projects/${projectAId}/tasks/${taskAId}`)
       .set('Authorization', `Bearer ${userBToken}`);
-
     expect([403, 404]).toContain(res.status);
   });
 
@@ -153,7 +127,6 @@ describe('Tenant Isolation (e2e)', () => {
       .patch(`/api/v1/projects/${projectAId}/tasks/${taskAId}`)
       .set('Authorization', `Bearer ${userBToken}`)
       .send({ status: 'done' });
-
     expect([403, 404]).toContain(res.status);
   });
 
@@ -161,20 +134,17 @@ describe('Tenant Isolation (e2e)', () => {
     const res = await request(app.getHttpServer())
       .delete(`/api/v1/projects/${projectAId}/tasks/${taskAId}`)
       .set('Authorization', `Bearer ${userBToken}`);
-
     expect([403, 404]).toContain(res.status);
   });
 
-  it('user B sees empty project list (no access to A projects)', async () => {
+  it('user B project list does not contain user A projects', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/v1/projects')
-      .set('Authorization', `Bearer ${userBToken}`)
-      .expect(200);
-
+      .set('Authorization', `Bearer ${userBToken}`);
+    expect(res.status).toBe(200);
     const body = res.body as Record<string, unknown>;
     expect(body.success).toBe(true);
     const projects = (body.data as Array<{ id: string }>) ?? [];
-    const hasProjectA = projects.some((p) => p.id === projectAId);
-    expect(hasProjectA).toBe(false);
+    expect(projects.some((p) => p.id === projectAId)).toBe(false);
   });
 });

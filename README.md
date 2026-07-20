@@ -64,8 +64,10 @@ npm run test:e2e
 ## Strategi Multi-Tenancy
 
 ### Yang Dipilih: Row-Level Scoping (RLS)
+Kenapa saya memilih ini, karena ga boros dan mudah jika mau migrasi, 
+yang paling penting disini developer menambahkan auto test sebelum naik prod
 
-Setiap tabel memiliki kolom `company_id`. Tenant isolation dijamin di **3 layer**:
+Setiap tabel memiliki kolom `company_id`. Tenant isolation dijamin di 3 layer:
 
 #### Layer 1 — Application Level (`withTenant()`)
 ```typescript
@@ -92,19 +94,6 @@ Guard pipeline memvalidasi JWT, resolve tenant dari `user.activeCompanyId`, dan 
 ### Tenant Dari Mana?
 
 Tenant **selalu di-resolve dari `request.user.companyId`** — tidak pernah dari URL parameter atau request body. Client tidak bisa menebak atau memanipulasi `companyId`.
-
-### Kenapa RLS?
-
-| Strategy | Kelebihan | Kekurangan |
-|----------|-----------|------------|
-| **Row-Level (RLS)** ✅ | Simple, satu DB, RLS sebagai safety net | Query performance di scale sangat besar |
-| Schema-per-tenant | Isolasi lebih kuat | Migration ribet, connection pool mahal |
-| Database-per-tenant | Isolasi sempurna | Overhead infra, backup/restore per tenant |
-
-RLS dipilih karena:
-1. Untuk SaaS MVP, ini paling cepat diimplementasikan
-2. PostgreSQL RLS sudah battle-tested
-3. Double protection (app + DB) mengurangi risiko data leak
 
 ---
 

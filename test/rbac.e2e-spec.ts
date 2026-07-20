@@ -1,23 +1,23 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/app.config';
+
+const PASSWORD = 'ValidPass1234';
+const TIMEOUT = 30_000;
 
 interface AuthResponse {
   accessToken: string;
 }
 
-interface CompanyResponse {
-  data: { id: string };
-}
-
-interface ProjectResponse {
-  data: { id: string };
-}
-
-interface TaskResponse {
-  data: { id: string };
+interface ListResponse {
+  success: boolean;
+  data: unknown[];
 }
 
 describe('RBAC (e2e)', () => {
@@ -25,90 +25,95 @@ describe('RBAC (e2e)', () => {
   let ownerToken: string;
   let memberToken: string;
   let projectId: string;
+  let taskId: string;
+
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  const prisma = new PrismaClient({ adapter });
 
   beforeAll(async () => {
+    await prisma.task.deleteMany();
+    await prisma.project.deleteMany();
+    await prisma.companyMember.deleteMany();
+    await prisma.company.deleteMany();
+    await prisma.appUser.deleteMany({ where: { email: { contains: 'rbac-' } } });
+
+    const passwordHash = await bcrypt.hash(PASSWORD, 12);
+    const ts = Date.now();
+
+    const owner = await prisma.appUser.create({
+      data: {
+        email: `rbac-owner-${ts}@test.com`,
+        fullName: 'RBAC Owner',
+        passwordHash,
+        subscriptionStatus: 'active',
+        subscriptionEndsAt: new Date('2027-12-31'),
+      },
+    });
+
+    const member = await prisma.appUser.create({
+      data: {
+        email: `rbac-member-${ts}@test.com`,
+        fullName: 'RBAC Member',
+        passwordHash,
+        subscriptionStatus: 'active',
+        subscriptionEndsAt: new Date('2027-12-31'),
+      },
+    });
+
+    const company = await prisma.company.create({
+      data: { name: 'RBAC Company', slug: `rbac-company-${ts}`, ownerId: owner.id },
+    });
+
+    await prisma.appUser.update({ where: { id: owner.id }, data: { activeCompanyId: company.id } });
+
+    await prisma.companyMember.create({
+      data: { companyId: company.id, userId: member.id, role: 'member' },
+    });
+
+    await prisma.appUser.update({ where: { id: member.id }, data: { activeCompanyId: company.id } });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    configureApp(app);
     await app.init();
 
-    const timestamp = Date.now();
+    const loginOwner = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: owner.email, password: PASSWORD });
+    ownerToken = (loginOwner.body as AuthResponse).accessToken;
 
-    const ownerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        fullName: 'RBAC Owner',
-        email: `rbac-owner-${timestamp}@test.com`,
-        password: 'Password123',
-      })
-      .expect(201);
-
-    const ownerBody = ownerRes.body as AuthResponse;
-    ownerToken = ownerBody.accessToken;
-
-    const memberRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        fullName: 'RBAC Member',
-        email: `rbac-member-${timestamp}@test.com`,
-        password: 'Password123',
-      })
-      .expect(201);
-
-    const memberBody = memberRes.body as AuthResponse;
-    memberToken = memberBody.accessToken;
-  });
+    const loginMember = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: member.email, password: PASSWORD });
+    memberToken = (loginMember.body as AuthResponse).accessToken;
+  }, TIMEOUT);
 
   afterAll(async () => {
     await app?.close();
-  });
+    await prisma.$disconnect();
+  }, TIMEOUT);
 
-  it('owner creates company', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/companies')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: 'RBAC Company', slug: `rbac-company-${Date.now()}` })
-      .expect(201);
-
-    const body = res.body as CompanyResponse;
-    expect(body.data.id).toBeDefined();
-  });
-
-  it('owner adds member to company', async () => {
-    await request(app.getHttpServer())
-      .post('/api/v1/members')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ email: 'rbac-member@test.com', role: 'member' });
-  });
-
-  it('owner creates project', async () => {
+  it('owner can create project (201)', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/projects')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: 'RBAC Project' })
+      .send({ name: 'Owner Project' })
       .expect(201);
 
-    const body = res.body as ProjectResponse;
+    const body = res.body as { data: { id: string } };
     projectId = body.data.id;
   });
 
-  it('member can list projects', async () => {
+  it('member can list projects (200)', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/v1/projects')
       .set('Authorization', `Bearer ${memberToken}`)
       .expect(200);
 
-    expect((res.body as Record<string, unknown>).success).toBe(true);
+    expect((res.body as ListResponse).success).toBe(true);
   });
 
   it('member cannot create project (403)', async () => {
@@ -116,6 +121,15 @@ describe('RBAC (e2e)', () => {
       .post('/api/v1/projects')
       .set('Authorization', `Bearer ${memberToken}`)
       .send({ name: 'Member Project' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('member cannot update project (403)', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/api/v1/projects/${projectId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ name: 'Hacked' });
 
     expect(res.status).toBe(403);
   });
@@ -128,12 +142,15 @@ describe('RBAC (e2e)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('member cannot delete project (403)', async () => {
+  it('owner can create task (201)', async () => {
     const res = await request(app.getHttpServer())
-      .delete(`/api/v1/projects/${projectId}`)
-      .set('Authorization', `Bearer ${memberToken}`);
+      .post(`/api/v1/projects/${projectId}/tasks`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ title: 'Owner Task' })
+      .expect(201);
 
-    expect(res.status).toBe(403);
+    const body = res.body as { data: { id: string } };
+    taskId = body.data.id;
   });
 
   it('member cannot create task (403)', async () => {
@@ -146,19 +163,17 @@ describe('RBAC (e2e)', () => {
   });
 
   it('member cannot delete task (403)', async () => {
-    const createRes = await request(app.getHttpServer())
-      .post(`/api/v1/projects/${projectId}/tasks`)
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ title: 'Owner Task' })
-      .expect(201);
-
-    const body = createRes.body as TaskResponse;
-    const taskId = body.data.id;
-
     const res = await request(app.getHttpServer())
       .delete(`/api/v1/projects/${projectId}/tasks/${taskId}`)
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(res.status).toBe(403);
+  });
+
+  it('owner can delete task (200)', async () => {
+    await request(app.getHttpServer())
+      .delete(`/api/v1/projects/${projectId}/tasks/${taskId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
   });
 });

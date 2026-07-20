@@ -1,7 +1,10 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 const BCRYPT_ROUNDS = 12;
 
 async function main() {
@@ -55,13 +58,19 @@ async function main() {
     },
   });
 
-  await prisma.companyMember.createMany({
-    data: [
-      { companyId: company1.id, userId: user1.id, role: 'owner' },
-      { companyId: company1.id, userId: user3.id, role: 'member' },
-      { companyId: company2.id, userId: user2.id, role: 'owner' },
-    ],
-  });
+  const members = [
+    { companyId: company1.id, userId: user1.id, role: 'owner' },
+    { companyId: company1.id, userId: user3.id, role: 'member' },
+    { companyId: company2.id, userId: user2.id, role: 'owner' },
+  ];
+
+  for (const m of members) {
+    await prisma.companyMember.upsert({
+      where: { companyId_userId: { companyId: m.companyId, userId: m.userId } },
+      update: { role: m.role },
+      create: m,
+    });
+  }
 
   await prisma.appUser.update({
     where: { id: user1.id },
