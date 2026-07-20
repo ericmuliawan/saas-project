@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AppUser {
+  id                 String          @id @default(uuid()) @db.Uuid
+  email              String          @unique @db.VarChar(320)
+  fullName           String          @map("full_name") @db.VarChar(150)
+  subscriptionStatus String          @default("inactive") @map("subscription_status") @db.VarChar(20)
+  subscriptionEndsAt DateTime?       @map("subscription_ends_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ownedCompanies     Company[]       @relation("CompanyOwner")
+  memberships        CompanyMember[]
+
+  @@map("app_users")
+}
+
+model Company {
+  id        String          @id @default(uuid()) @db.Uuid
+  ownerId   String          @map("owner_id") @db.Uuid
+  name      String          @db.VarChar(150)
+  slug      String          @unique @db.VarChar(100)
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  owner     AppUser         @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members   CompanyMember[]
+  projects  Project[]
+  tasks     Task[]
+
+  @@unique([id, ownerId], map: "companies_id_owner_unique")
+  @@map("companies")
+}
+
+model CompanyMember {
+  companyId       String    @map("company_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  role            String    @default("member") @db.VarChar(20)
+  joinedAt        DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user            AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdProjects Project[] @relation("ProjectCreator")
+  assignedTasks   Task[]    @relation("TaskAssignee")
+
+  @@id([companyId, userId])
+  @@unique([userId, companyId], map: "company_members_user_company_unique")
+  @@map("company_members")
+}
+
+model Project {
+  id          String        @id @default(uuid()) @db.Uuid
+  companyId   String        @map("company_id") @db.Uuid
+  name        String        @db.VarChar(200)
+  description String?
+  status      String        @default("active") @db.VarChar(20)
+  createdById String        @map("created_by") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy   CompanyMember @relation("ProjectCreator", fields: [createdById, companyId], references: [userId, companyId], onDelete: Restrict)
+  tasks       Task[]
+
+  @@unique([id, companyId], map: "projects_id_company_unique")
+  @@map("projects")
+}
+
+model Task {
+  id          String         @id @default(uuid()) @db.Uuid
+  companyId   String         @map("company_id") @db.Uuid
+  projectId   String         @map("project_id") @db.Uuid
+  title       String         @db.VarChar(300)
+  description String?
+  status      String         @default("todo") @db.VarChar(20)
+  priority    String         @default("medium") @db.VarChar(10)
+  assigneeId  String?        @map("assignee_id") @db.Uuid
+  dueDate     DateTime?      @map("due_date") @db.Date
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project     Project        @relation(fields: [projectId, companyId], references: [id, companyId], onDelete: Cascade)
+  assignee    CompanyMember? @relation("TaskAssignee", fields: [assigneeId, companyId], references: [userId, companyId], onDelete: Restrict)
+
+  @@map("tasks")
+}
