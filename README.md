@@ -1,99 +1,193 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# SaaS Project Management API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Mini Project Management backend — multi-tenant SaaS dibangun dengan NestJS, Prisma, dan PostgreSQL.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tech Stack
 
-## Description
+- **Runtime**: Node.js + NestJS 11
+- **Database**: PostgreSQL + Prisma ORM
+- **Auth**: JWT (15 menit TTL)
+- **Queue**: BullMQ + Redis (background job)
+- **Testing**: Jest + Supertest
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Cara Menjalankan
 
-## Project setup
+### 1. Environment Setup
 
 ```bash
-$ npm install
+cp .env.example .env
 ```
 
-## Compile and run the project
+Edit `.env`:
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/saas_project?schema=public"
+JWT_SECRET="your-secret-key-min-32-characters-long"
+REDIS_HOST="localhost"
+REDIS_PORT="6379"
+```
+
+### 2. Install Dependencies
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+### 3. Database Migration
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npx prisma generate
+npx prisma migrate dev
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 4. Seed Data
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run seed
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5. Jalankan Server
 
-## Resources
+```bash
+npm run start:dev
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Server berjalan di `http://localhost:3000/api/v1`
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### 6. Jalankan Tests
 
-## Support
+```bash
+npm run test:e2e
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
+## Strategi Multi-Tenancy
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### Yang Dipilih: Row-Level Scoping (RLS)
 
-## License
+Setiap tabel memiliki kolom `company_id`. Tenant isolation dijamin di **3 layer**:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-# saas-project
+#### Layer 1 — Application Level (`withTenant()`)
+```typescript
+await prisma.withTenant(companyId, async (tx) => {
+  // Semua query di sini otomatis di-scope ke companyId
+});
+```
+Setiap request yang membutuhkan tenant context menjalankan seluruh operasi database dalam satu transaksi yang dimulai dengan `SET app.company_id`.
+
+#### Layer 2 — Database Level (PostgreSQL RLS)
+```sql
+CREATE POLICY company_isolation ON projects
+  USING (company_id = current_setting('app.company_id')::uuid);
+```
+RLS memastikan meskipun ada bug di application code, database tetap memblokir akses cross-tenant.
+
+#### Layer 3 — Application Guard
+```typescript
+@RequireTenant()  // Memastikan user punya activeCompanyId
+@Roles('owner', 'admin')  // Memastikan role cukup
+```
+Guard pipeline memvalidasi JWT, resolve tenant dari `user.activeCompanyId`, dan enforce RBAC.
+
+### Tenant Dari Mana?
+
+Tenant **selalu di-resolve dari `request.user.companyId`** — tidak pernah dari URL parameter atau request body. Client tidak bisa menebak atau memanipulasi `companyId`.
+
+### Kenapa RLS?
+
+| Strategy | Kelebihan | Kekurangan |
+|----------|-----------|------------|
+| **Row-Level (RLS)** ✅ | Simple, satu DB, RLS sebagai safety net | Query performance di scale sangat besar |
+| Schema-per-tenant | Isolasi lebih kuat | Migration ribet, connection pool mahal |
+| Database-per-tenant | Isolasi sempurna | Overhead infra, backup/restore per tenant |
+
+RLS dipilih karena:
+1. Untuk SaaS MVP, ini paling cepat diimplementasikan
+2. PostgreSQL RLS sudah battle-tested
+3. Double protection (app + DB) mengurangi risiko data leak
+
+---
+
+## API Endpoints
+
+### Auth
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/api/v1/auth/register` | Register user baru | Public |
+| POST | `/api/v1/auth/login` | Login | Public |
+
+### Projects
+| Method | Endpoint | Description | Role |
+|--------|----------|-------------|------|
+| POST | `/api/v1/projects` | Buat project | Owner/Admin |
+| GET | `/api/v1/projects` | List semua project | Semua |
+| GET | `/api/v1/projects/:id` | Detail project | Semua |
+| PATCH | `/api/v1/projects/:id` | Update project | Owner/Admin |
+| PATCH | `/api/v1/projects/:id/archive` | Archive project | Owner/Admin |
+
+### Tasks
+| Method | Endpoint | Description | Role |
+|--------|----------|-------------|------|
+| POST | `/api/v1/projects/:projectId/tasks` | Buat task | Owner/Admin |
+| GET | `/api/v1/projects/:projectId/tasks` | List tasks | Semua |
+| GET | `/api/v1/projects/:projectId/tasks/:id` | Detail task | Semua |
+| PATCH | `/api/v1/projects/:projectId/tasks/:id` | Update task | Owner/Admin + Member (own task only) |
+| DELETE | `/api/v1/projects/:projectId/tasks/:id` | Hapus task | Owner/Admin |
+
+### Members
+| Method | Endpoint | Description | Role |
+|--------|----------|-------------|------|
+| POST | `/api/v1/members` | Tambah member | Owner/Admin |
+| GET | `/api/v1/members` | List members | Semua |
+| PATCH | `/api/v1/members/:userId/role` | Ubah role | Owner |
+| DELETE | `/api/v1/members/:userId` | Hapus member | Owner/Admin |
+
+### Response Format
+
+```json
+// Success
+{ "success": true, "data": { ... } }
+
+// List
+{ "success": true, "data": [...], "meta": { "page": 1, "limit": 20, "total": 50 } }
+
+// Error
+{ "success": false, "error": { "code": "NOT_FOUND", "message": "Project not found" } }
+```
+
+---
+
+## Access Control
+
+| Action | Owner | Admin | Member |
+|--------|:-----:|:-----:|:------:|
+| View projects & tasks | ✅ | ✅ | ✅ |
+| Create/edit/archive projects | ✅ | ✅ | ❌ |
+| Create/edit/delete any task | ✅ | ✅ | ❌ |
+| Update assigned task | ✅ | ✅ | ✅ (own only) |
+| Invite/remove/change member roles | ✅ | ✅ | ❌ |
+| Change member role | ✅ | ❌ | ❌ |
+
+---
+
+## Background Job
+
+Sistem notifikasi menggunakan **BullMQ + Redis** untuk memproses job di luar request cycle.
+
+**Contoh job**: Ketika task di-assign ke user, notifikasi dikirim secara async.
+
+```
+Request → TaskService → Queue (Redis) → Worker → Console Log (mock email)
+```
+
+Worker akan melakukan retry dengan exponential backoff (3 attempts) jika gagal.
+
+---
+
+## Seed Data
+
+| User | Email | Password | Company | Role |
+|------|-------|----------|---------|------|
+| Alice | alice@example.com | Password123 | acme-corp | owner |
+| Bob | bob@example.com | Password123 | globex-inc | owner |
+| Charlie | charlie@example.com | Password123 | acme-corp | member |

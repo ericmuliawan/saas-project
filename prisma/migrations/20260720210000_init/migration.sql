@@ -10,6 +10,8 @@ create table app_users (
   id uuid primary key default gen_random_uuid(),
   email varchar(320) not null unique,
   full_name varchar(150) not null,
+  password_hash varchar(255) not null,
+  active_company_id uuid,
   subscription_status varchar(20) not null default 'inactive',
   subscription_ends_at timestamptz,
   created_at timestamptz not null default now(),
@@ -42,6 +44,12 @@ create table company_members (
   constraint company_members_role check (role in ('owner', 'admin', 'member')),
   constraint company_members_user_company_unique unique (user_id, company_id)
 );
+
+alter table app_users
+  add constraint app_users_active_company_id_fkey
+  foreign key (active_company_id)
+  references companies(id)
+  on delete set null;
 
 create table projects (
   id uuid primary key default gen_random_uuid(),
@@ -128,8 +136,41 @@ begin
 end;
 $$;
 
+-- A user can only make a company active after joining it.
+create or replace function require_active_company_membership()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.active_company_id is not null and not exists (
+    select 1
+    from company_members
+    where company_id = new.active_company_id and user_id = new.id
+  ) then
+    raise exception 'A user can only select a company they belong to';
+  end if;
+  return new;
+end;
+$$;
+
+-- The first company created by a user becomes their active tenant.
+create or replace function set_first_company_as_active()
+returns trigger
+language plpgsql
+as $$
+begin
+  update app_users
+  set active_company_id = new.id
+  where id = new.owner_id and active_company_id is null;
+  return new;
+end;
+$$;
+
 create trigger app_users_set_updated_at
 before update on app_users for each row execute function set_updated_at();
+create trigger app_users_require_active_company_membership
+before update of active_company_id on app_users
+for each row execute function require_active_company_membership();
 create trigger companies_set_updated_at
 before update on companies for each row execute function set_updated_at();
 create trigger projects_set_updated_at
@@ -143,6 +184,9 @@ for each row execute function require_active_subscription_for_company();
 create trigger companies_add_owner_as_member
 after insert on companies
 for each row execute function add_company_owner_as_member();
+create trigger companies_set_first_company_as_active
+after insert on companies
+for each row execute function set_first_company_as_active();
 
 -- Defense in depth: PostgreSQL rejects data outside the selected company.
 alter table companies enable row level security;

@@ -1,6 +1,5 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -11,10 +10,13 @@ model AppUser {
   id                 String          @id @default(uuid()) @db.Uuid
   email              String          @unique @db.VarChar(320)
   fullName           String          @map("full_name") @db.VarChar(150)
+  passwordHash       String          @map("password_hash") @db.VarChar(255)
+  activeCompanyId    String?         @map("active_company_id") @db.Uuid
   subscriptionStatus String          @default("inactive") @map("subscription_status") @db.VarChar(20)
   subscriptionEndsAt DateTime?       @map("subscription_ends_at") @db.Timestamptz(6)
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  activeCompany      Company?        @relation("ActiveCompany", fields: [activeCompanyId], references: [id], onDelete: SetNull)
   ownedCompanies     Company[]       @relation("CompanyOwner")
   memberships        CompanyMember[]
 
@@ -29,6 +31,7 @@ model Company {
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   owner     AppUser         @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  activeFor AppUser[]       @relation("ActiveCompany")
   members   CompanyMember[]
   projects  Project[]
   tasks     Task[]

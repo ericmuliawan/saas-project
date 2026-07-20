@@ -15,6 +15,7 @@ erDiagram
         uuid id PK
         varchar email UK
         varchar full_name
+        uuid active_company_id FK
         varchar subscription_status
         timestamptz subscription_ends_at
     }
@@ -61,7 +62,7 @@ erDiagram
 3. Only a user whose status is `active` and whose subscription has not ended may
    create a company. The database trigger enforces this rule.
 4. The database automatically adds that user to `company_members` with the
-   `owner` role.
+   `owner` role and selects that company as `active_company_id`.
 5. Projects and tasks are scoped with `company_id`. Composite foreign keys stop
    a task, creator, or assignee from referencing another company's records.
 
